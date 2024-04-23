@@ -32,6 +32,12 @@ const authenticatedUser = (username, password) => {
 regd_users.post("/login", (req, res) => {
     const { username, password } = req.body;
 
+    // Check if the user is already authenticated
+    if (req.session.authorization && req.session.authorization.accessToken) {
+        // If already authenticated, return the existing JWT token
+        return res.status(200).json({ accessToken: req.session.authorization.accessToken });
+    }
+
     // Check if username and password are provided
     if (!username || !password) {
         return res.status(400).json({ message: "Username and password are required" });
@@ -46,6 +52,9 @@ regd_users.post("/login", (req, res) => {
     if (authenticatedUser(username, password)) {
         // Create a JWT token for the user
         const accessToken = jwt.sign({ username: username }, "secret_key", {expiresIn: "1h"});
+
+        // Store the JWT token in the session
+        req.session.authorization = { accessToken: accessToken };
 
         // Return the JWT token as response
         return res.status(200).json({ accessToken: accessToken });
@@ -86,6 +95,41 @@ regd_users.put("/auth/review/:isbn", (req, res) => {
 
                 return res.status(200).json({ message: "Review added/modified successfully" });
             } else {
+                return res.status(404).json({ message: "Book not found" });
+            }
+        }
+    });
+});
+// Delete a book review
+regd_users.delete("/auth/review/:isbn", (req, res) => {
+    // Retrieve the ISBN from request parameters
+    const isbn = req.params.isbn;
+
+    // Check if the user is authenticated
+    if (!req.session.authorization || !req.session.authorization.accessToken) {
+        return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    // Verify the JWT token
+    jwt.verify(req.session.authorization.accessToken, "secret_key", (err, decoded) => {
+        if (err) {
+            return res.status(401).json({ message: "Unauthorized" });
+        } else {
+            const username = decoded.username;
+
+            // Check if the book exists
+            if (books[isbn]) {
+                // Check if the user has a review for this book
+                if (books[isbn].reviews[username]) {
+                    // Delete the review
+                    delete books[isbn].reviews[username];
+                    return res.status(200).json({ message: "Review deleted successfully" });
+                } else {
+                    // If the user does not have a review for this book
+                    return res.status(404).json({ message: "Review not found" });
+                }
+            } else {
+                // If the book is not found
                 return res.status(404).json({ message: "Book not found" });
             }
         }
